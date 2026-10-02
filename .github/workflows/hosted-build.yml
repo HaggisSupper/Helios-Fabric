@@ -1,0 +1,47 @@
+name: Hosted content validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-content-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate documentation
+        run: |
+          git diff --check
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          files = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          docs = [Path(name) for name in files if name.endswith(".md")]
+          for path in docs:
+              path.read_text(encoding="utf-8")
+          if not Path("README.md").read_text(encoding="utf-8").strip():
+              raise SystemExit("README.md is empty")
+          print(f"Validated {len(docs)} documentation files; no application build manifest is present.")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: |
+            README.md
+            AGENTS.md
+            .github/BUILDING.md
+          if-no-files-found: error
+          retention-days: 14
